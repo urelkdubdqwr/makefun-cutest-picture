@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Mochi the kitten — generative picture for make.fun 'Make the cutest picture'.
+"""BERRY BUNNY — generative art for make.fun 'Make the cutest picture' (v2).
 
-Pure Python 3 stdlib (no PIL in the sandbox). A chubby orange kitten with huge
-shiny eyes, blush and a tiny heart, on a soft pastel background with clouds,
-hearts and sparkles. 1024x1024, fully deterministic (fixed seeds -> identical
-bytes every run). Writes /output/entry.png (override with ENTRY_OUT locally).
+Maximum chibi: a cream bunny whose head fills most of the frame, with huge
+glossy eyes and a tiny body, hugging one big strawberry. Pure Python 3
+stdlib, fully deterministic (fixed constants only), writes
+/output/entry.png (override with ENTRY_OUT for local runs).
 """
-import math, os, random, struct, zlib
+import math, os, struct, zlib
 
 W = H = 1024
 
@@ -48,8 +48,10 @@ class Canvas:
         self.p[i + 1] = int(self.p[i + 1] * ia + c[1] * a)
         self.p[i + 2] = int(self.p[i + 2] * ia + c[2] * a)
 
-    def vgrad(self, stops):
-        for y in range(self.h):
+    def vgrad(self, stops, y_top=0, y_bot=None):
+        if y_bot is None:
+            y_bot = self.h
+        for y in range(y_top, y_bot):
             c = grad(stops, y / (self.h - 1))
             row = bytes((int(c[0]), int(c[1]), int(c[2]))) * self.w
             i = y * self.w * 3
@@ -81,6 +83,15 @@ def sd_ellipse(cx, cy, rx, ry):
     return lambda x, y: (math.hypot((x - cx) / rx, (y - cy) / ry) - 1.0) * m
 
 
+def sd_capsule(x1, y1, x2, y2, r):
+    def f(px, py):
+        ex, ey = x2 - x1, y2 - y1
+        wx, wy = px - x1, py - y1
+        t = clamp((wx * ex + wy * ey) / (ex * ex + ey * ey), 0.0, 1.0)
+        return math.hypot(wx - ex * t, wy - ey * t) - r
+    return f
+
+
 def sd_poly(pts):
     """Inigo Quilez polygon SDF (exact sign test)."""
     def f(px, py):
@@ -107,15 +118,6 @@ def sd_poly(pts):
     return f
 
 
-def sd_capsule(x1, y1, x2, y2, r):
-    def f(px, py):
-        ex, ey = x2 - x1, y2 - y1
-        wx, wy = px - x1, py - y1
-        t = clamp((wx * ex + wy * ey) / (ex * ex + ey * ey), 0.0, 1.0)
-        return math.hypot(wx - ex * t, wy - ey * t) - r
-    return f
-
-
 def sd_heart(cx, cy, s):
     """Plump heart = union of two lobe circles and a downward triangle."""
     c1 = sd_circle(cx - 0.42 * s, cy - 0.30 * s, 0.56 * s)
@@ -135,179 +137,146 @@ def sd_sparkle(cx, cy, r):
     return f
 
 
-def cloud(cv, cx, cy, s, col, alpha):
-    for dx, dy, r in ((-70, 14, 44), (-30, -6, 58), (22, -12, 64), (66, 10, 46), (0, 16, 52)):
-        draw(cv, (cx + (dx - r - 24) * s, cy + (dy - r - 24) * s,
-                  cx + (dx + r + 24) * s, cy + (dy + r + 24) * s),
-             sd_circle(cx + dx * s, cy + dy * s, r * s), solid(col, alpha), aa=16.0)
-
-
 def main():
     cv = Canvas(W, H)
-    rng = random.Random(777)
 
-    # --- background: dreamy pink -> peach -> cream ---
-    cv.vgrad([(0.0, (255, 205, 225)), (0.45, (255, 218, 205)),
-              (0.75, (255, 233, 200)), (1.0, (255, 240, 214))])
+    OUT = (170, 116, 128)        # soft mauve outline
+    FUR = (255, 247, 238)        # warm cream white
+    PINK = (255, 158, 180)       # inner ear / accents
+    BLUSH = (255, 110, 150)
 
-    # polka dots, soft white
-    for gy in range(5):
-        for gx in range(5):
-            cx = 70 + gx * 215 + (55 if gy % 2 else 0)
-            cy = 60 + gy * 205
-            if 330 < cx < 700 and 180 < cy < 900:
-                continue  # keep the kitten's area clean
-            draw(cv, (cx - 26, cy - 26, cx + 26, cy + 26), sd_circle(cx, cy, 15),
-                 solid((255, 255, 255), 0.35), aa=6.0)
+    # --- background: bubblegum pink melting into lilac ---
+    cv.vgrad([(0.0, (250, 158, 203)), (0.55, (243, 168, 216)),
+              (1.0, (203, 172, 246))])
 
-    # clouds
-    cloud(cv, 150, 128, 1.0, (255, 255, 255), 0.85)
-    cloud(cv, 872, 108, 0.85, (255, 255, 255), 0.85)
-    cloud(cv, 916, 856, 0.7, (255, 255, 255), 0.6)
-    cloud(cv, 104, 830, 0.62, (255, 255, 255), 0.6)
+    # soft halo behind the head so the cream fur pops off the pastel bg
+    draw(cv, (512 - 430, 400 - 430, 512 + 430, 400 + 430), sd_circle(512, 400, 418),
+         solid((255, 255, 255), 0.30), aa=60.0)
 
-    # floating hearts + sparkles
-    for cx, cy, s, col in [(238, 300, 30, (255, 130, 165)), (806, 330, 24, (255, 150, 150)),
-                           (862, 560, 19, (255, 130, 165)), (168, 566, 21, (255, 170, 160))]:
-        draw(cv, (cx - s - 4, cy - s - 4, cx + s + 4, cy + s + 4), sd_heart(cx, cy, s),
-             solid(col, 0.9), aa=1.6)
-    for cx, cy, r, col in [(316, 168, 26, (255, 214, 90)), (724, 196, 20, (255, 224, 130)),
-                           (120, 430, 17, (255, 214, 90)), (912, 442, 22, (255, 224, 130)),
-                           (648, 96, 15, (255, 230, 150))]:
+    # a few sparkles, kept sparse and out of the face
+    for cx, cy, r in ((120, 150, 30), (906, 128, 24), (948, 470, 19), (74, 500, 17),
+                      (842, 838, 21), (150, 856, 18)):
         draw(cv, (cx - r - 3, cy - r - 3, cx + r + 3, cy + r + 3), sd_sparkle(cx, cy, r),
-             solid(col, 0.95), aa=1.6)
+             solid((255, 244, 190), 0.95), aa=1.6)
+    for cx, cy, s in ((168, 300, 22), (872, 300, 18)):
+        draw(cv, (cx - s - 4, cy - s - 4, cx + s + 4, cy + s + 4), sd_heart(cx, cy, s),
+             solid((255, 120, 160), 0.85), aa=1.6)
 
-    # --- ground shadow + rug ---
-    draw(cv, (512 - 330, 856 - 66, 512 + 330, 856 + 66), sd_ellipse(512, 862, 322, 58),
-         solid((238, 164, 150), 0.35), aa=22.0)
-    draw(cv, (512 - 348, 852 - 84, 512 + 348, 852 + 84), sd_ellipse(512, 856, 340, 76),
-         solid((255, 183, 197), 0.85), aa=3.0)
-    draw(cv, (512 - 348, 852 - 84, 512 + 348, 852 + 84), sd_ellipse(512, 856, 268, 54),
-         solid((255, 205, 214), 0.9), aa=3.0)
+    # ground shadow
+    draw(cv, (512 - 320, 902 - 52, 512 + 320, 902 + 52), sd_ellipse(512, 908, 308, 46),
+         solid((178, 110, 160), 0.35), aa=20.0)
 
-    OUT = (176, 106, 54)      # soft outline brown-orange
-    FUR = (250, 166, 74)      # warm orange
-    FUR_D = (232, 132, 44)    # stripes
-    CREAM = (255, 226, 178)   # belly / muzzle
-    PINK = (255, 133, 161)
-    NOSE = (244, 104, 132)
+    # --- ears: chains of circles leaning outward, pink inside ---
+    def ear(x_base, x_tip, lean):
+        pts = []
+        for i in range(15):
+            t = i / 14.0
+            cx = x_base + (x_tip - x_base) * t
+            cy = 348 - t * 300
+            r = 68 - t * 26
+            pts.append((cx, cy, r))
+        for cx, cy, r in pts:
+            draw(cv, (cx - r - 9, cy - r - 9, cx + r + 9, cy + r + 9),
+                 sd_circle(cx, cy, r + 7), solid(OUT), aa=1.6)
+        for cx, cy, r in pts:
+            draw(cv, (cx - r - 4, cy - r - 4, cx + r + 4, cy + r + 4),
+                 sd_circle(cx, cy, r), solid(FUR), aa=1.6)
+        # inner ear: one smooth pink capsule, no segment bumps
+        ix0 = x_base + (x_tip - x_base) * 0.16 + lean
+        iy0 = 348 - 0.16 * 300
+        ix1 = x_base + (x_tip - x_base) * 0.84 + lean
+        iy1 = 348 - 0.84 * 300
+        draw(cv, (min(ix0, ix1) - 34, iy1 - 34, max(ix0, ix1) + 34, iy0 + 34),
+             sd_capsule(ix0, iy0, ix1, iy1, 25), solid(PINK), aa=1.8)
+    ear(408, 344, 6)
+    ear(616, 680, -6)
 
-    # --- tail: chain of circles curling up the right side ---
-    tail_pts = []
-    for i in range(21):
-        t = i / 20.0
-        ang = -0.5 + t * 2.05
-        cx = 688 + math.cos(ang) * 128
-        cy = 800 - math.sin(t * math.pi) * 168 - t * 26
-        tail_pts.append((cx, cy, 40 - t * 7))
-    for cx, cy, r in tail_pts:
-        draw(cv, (cx - r - 8, cy - r - 8, cx + r + 8, cy + r + 8),
-             sd_circle(cx, cy, r + 5), solid(OUT), aa=1.4)
-    for cx, cy, r in tail_pts:
-        draw(cv, (cx - r - 4, cy - r - 4, cx + r + 4, cy + r + 4),
-             sd_circle(cx, cy, r), solid(FUR), aa=1.4)
-    tx, ty, tr = tail_pts[-1]
-    draw(cv, (tx - tr - 4, ty - tr - 4, tx + tr + 4, ty + tr + 4),
-         sd_circle(tx, ty, tr), solid(CREAM), aa=1.4)  # cream tail tip
-
-    # --- body ---
-    draw(cv, (512 - 232, 470 - 8, 512 + 232, 880), sd_ellipse(512, 672, 224, 204),
+    # --- tiny body peeking out under the head ---
+    draw(cv, (512 - 176, 690, 512 + 176, 946), sd_ellipse(512, 818, 168, 122),
          solid(OUT), aa=1.6)
-    draw(cv, (512 - 224, 470, 512 + 224, 872), sd_ellipse(512, 672, 216, 196),
+    draw(cv, (512 - 168, 694, 512 + 168, 940), sd_ellipse(512, 818, 160, 116),
          solid(FUR), aa=1.6)
-    draw(cv, (512 - 130, 600, 512 + 130, 880), sd_ellipse(512, 742, 122, 126),
-         solid(CREAM), aa=2.0)
 
-    # feet
-    for fx in (392, 632):
-        draw(cv, (fx - 76, 800, fx + 76, 892), sd_ellipse(fx, 846, 70, 44),
+    # feet with pink pads
+    for fx in (378, 646):
+        draw(cv, (fx - 70, 872, fx + 70, 950), sd_ellipse(fx, 912, 63, 36),
              solid(OUT), aa=1.6)
-        draw(cv, (fx - 70, 802, fx + 70, 888), sd_ellipse(fx, 846, 63, 38),
+        draw(cv, (fx - 63, 876, fx + 63, 946), sd_ellipse(fx, 912, 56, 30),
              solid(FUR), aa=1.6)
-        for txo in (-24, 0, 24):  # toe beans lines
-            draw(cv, (fx + txo - 3, 826, fx + txo + 3, 852),
-                 sd_capsule(fx + txo, 830, fx + txo, 848, 2.2), solid(OUT, 0.55), aa=1.2)
+        draw(cv, (fx - 24, 896, fx + 24, 930), sd_ellipse(fx, 914, 19, 13),
+             solid(PINK), aa=1.6)
 
-    # --- ears (behind head) ---
-    ear_l = [(372, 268), (330, 108), (486, 190)]
-    ear_r = [(652, 268), (694, 108), (538, 190)]
-    for ear in (ear_l, ear_r):
-        big = [(512 + (x - 512) * 1.07, 268 + (y - 268) * 1.10) for (x, y) in ear]
-        draw(cv, (min(p[0] for p in big) - 4, min(p[1] for p in big) - 4,
-                  max(p[0] for p in big) + 4, max(p[1] for p in big) + 4),
-             sd_poly(big), solid(OUT), aa=1.8)
-        draw(cv, (min(p[0] for p in ear) - 4, min(p[1] for p in ear) - 4,
-                  max(p[0] for p in ear) + 4, max(p[1] for p in ear) + 4),
-             sd_poly(ear), solid(FUR), aa=1.8)
-    for ear, inset in ((ear_l, 0.55), (ear_r, 0.55)):
-        cx = sum(p[0] for p in ear) / 3
-        cy = sum(p[1] for p in ear) / 3
-        small = [(cx + (x - cx) * inset, cy + (y - cy) * inset) for (x, y) in ear]
-        draw(cv, (min(p[0] for p in small) - 4, min(p[1] for p in small) - 4,
-                  max(p[0] for p in small) + 4, max(p[1] for p in small) + 4),
-             sd_poly(small), solid(PINK), aa=2.0)
+    # --- THE HEAD: one huge ellipse, roughly 60% of the frame ---
+    draw(cv, (512 - 326, 424 - 286, 512 + 326, 424 + 286), sd_ellipse(512, 424, 318, 280),
+         solid(OUT), aa=1.6)
+    draw(cv, (512 - 318, 424 - 280, 512 + 318, 424 + 280), sd_ellipse(512, 424, 310, 272),
+         solid(FUR), aa=1.6)
 
-    # --- head ---
-    draw(cv, (512 - 204, 158, 512 + 204, 566), sd_circle(512, 362, 198), solid(OUT), aa=1.6)
-    draw(cv, (512 - 196, 166, 512 + 196, 558), sd_circle(512, 362, 190), solid(FUR), aa=1.6)
-    # muzzle / cheeks cream patch
-    draw(cv, (512 - 128, 396, 512 + 128, 566), sd_ellipse(512, 486, 122, 76),
-         solid(CREAM), aa=2.4)
+    # muzzle patch
+    draw(cv, (512 - 128, 462, 512 + 128, 622), sd_ellipse(512, 542, 122, 76),
+         solid((255, 255, 255), 0.85), aa=3.0)
 
-    # forehead stripes
-    for dx, ln in ((-52, 44), (0, 54), (52, 44)):
-        draw(cv, (512 + dx - 12, 168, 512 + dx + 12, 168 + ln + 10),
-             sd_capsule(512 + dx, 178, 512 + dx, 178 + ln, 10), solid(FUR_D, 0.8), aa=1.6)
-    # cheek stripes
-    for sgn in (-1, 1):
-        for k, yy in enumerate((392, 428)):
-            x0 = 512 + sgn * 148
-            draw(cv, (min(x0, x0 + sgn * 44) - 10, yy - 10, max(x0, x0 + sgn * 44) + 10, yy + 10),
-                 sd_capsule(x0, yy, x0 + sgn * 42, yy + 4, 8), solid(FUR_D, 0.65), aa=1.6)
+    # blush: two big soft ovals
+    for bx in (296, 728):
+        draw(cv, (bx - 62, 512, bx + 62, 586), sd_ellipse(bx, 549, 54, 30),
+             solid(BLUSH, 0.55), aa=16.0)
 
-    # --- eyes: big, glossy ---
-    for ex in (424, 600):
-        draw(cv, (ex - 47, 330, ex + 47, 452), sd_ellipse(ex, 392, 41, 55),
-             solid((74, 44, 30)), aa=1.6)
-        draw(cv, (ex - 30, 344, ex + 4, 392), sd_circle(ex - 13, 368, 15),
-             solid((255, 255, 255), 0.95), aa=1.6)
-        draw(cv, (ex + 2, 398, ex + 26, 424), sd_circle(ex + 13, 411, 8),
-             solid((255, 255, 255), 0.85), aa=1.6)
+    # --- EYES: huge, dark and glossy ---
+    for ex in (392, 632):
+        draw(cv, (ex - 54, 368, ex + 54, 526), sd_ellipse(ex, 447, 47, 71),
+             solid((64, 34, 42)), aa=1.6)
+        # warm iris glow at the bottom of each eye
+        draw(cv, (ex - 40, 452, ex + 40, 522), sd_ellipse(ex, 492, 34, 26),
+             solid((178, 84, 96), 0.55), aa=10.0)
+        # main highlight + sparkle dot
+        draw(cv, (ex - 34, 380, ex + 2, 424), sd_circle(ex - 15, 402, 16),
+             solid((255, 255, 255), 0.97), aa=1.6)
+        draw(cv, (ex + 2, 452, ex + 28, 484), sd_circle(ex + 14, 468, 9),
+             solid((255, 255, 255), 0.9), aa=1.6)
 
-    # nose + mouth
-    nose = [(512 - 17, 452), (512 + 17, 452), (512, 472)]
-    draw(cv, (512 - 20, 449, 512 + 20, 475), sd_poly(nose), solid(NOSE), aa=1.6)
-    for sgn in (-1, 1):  # little 'w' mouth arcs via capsules
-        draw(cv, (512 + sgn * 2 - 32, 470, 512 + sgn * 32 + 4, 504),
-             sd_capsule(512 + sgn * 3, 476, 512 + sgn * 26, 490, 3.4), solid(OUT, 0.85), aa=1.2)
+    # nose: tiny rounded triangle
+    nose = [(497, 512), (527, 512), (512, 530)]
+    draw(cv, (494, 509, 530, 533), sd_poly(nose), solid((244, 108, 138)), aa=1.6)
 
-    # blush
-    for bx in (368, 656):
-        draw(cv, (bx - 52, 448, bx + 52, 508), sd_ellipse(bx, 478, 44, 24),
-             solid((255, 120, 150), 0.5), aa=15.0)
+    # mouth: little open smile with a tongue
+    draw(cv, (512 - 26, 532, 512 + 26, 572), sd_ellipse(512, 550, 22, 16),
+         solid((146, 62, 74)), aa=1.6)
+    draw(cv, (512 - 15, 550, 512 + 15, 570), sd_ellipse(512, 559, 12, 8),
+         solid((255, 138, 162)), aa=1.6)
 
-    # whiskers
-    for sgn in (-1, 1):
-        for k, (dy, tilt) in enumerate(((-6, -7), (6, 0), (18, 8))):
-            x0 = 512 + sgn * 118
-            x1 = 512 + sgn * 218
-            draw(cv, (min(x0, x1) - 4, 452 + dy - 12, max(x0, x1) + 4, 452 + dy + tilt + 12),
-                 sd_capsule(x0, 458 + dy, x1, 458 + dy + tilt, 2.4),
-                 solid((255, 250, 244), 0.75), aa=1.2)
+    # --- THE STRAWBERRY: one big juicy prop hugged at chest height ---
+    BX, BY, BS = 512, 710, 112
+    draw(cv, (BX - BS - 8, BY - BS - 8, BX + BS + 8, BY + BS + 14), sd_heart(BX, BY, BS),
+         solid((178, 40, 58)), aa=1.8)
+    draw(cv, (BX - BS, BY - BS, BX + BS, BY + BS + 6), sd_heart(BX, BY, BS - 7),
+         solid((244, 63, 88)), aa=1.8)
+    # glossy sheen on the upper-left of the berry
+    draw(cv, (BX - 74, BY - 78, BX - 6, BY - 6), sd_ellipse(BX - 40, BY - 44, 26, 34),
+         solid((255, 255, 255), 0.35), aa=12.0)
+    # seeds
+    seed_rows = ((-44, (-34, 0, 34)), (-8, (-52, -18, 18, 52)), (28, (-40, 0, 40)),
+                 (62, (-24, 14)), (92, (0,)))
+    for dy, dxs in seed_rows:
+        for dx in dxs:
+            draw(cv, (BX + dx - 8, BY + dy - 11, BX + dx + 8, BY + dy + 11),
+                 sd_ellipse(BX + dx, BY + dy, 5.5, 8.5), solid((255, 226, 170), 0.95), aa=1.4)
+    # leafy cap + stem
+    leaf = (86, 196, 96)
+    for pts in ([(BX - 78, BY - 66), (BX - 6, BY - 62), (BX - 44, BY - 22)],
+                [(BX + 78, BY - 66), (BX + 6, BY - 62), (BX + 44, BY - 22)],
+                [(BX - 34, BY - 78), (BX + 34, BY - 78), (BX, BY - 26)]):
+        draw(cv, (min(p[0] for p in pts) - 4, min(p[1] for p in pts) - 4,
+                  max(p[0] for p in pts) + 4, max(p[1] for p in pts) + 4),
+             sd_poly(pts), solid(leaf), aa=1.8)
+    draw(cv, (BX - 8, BY - 118, BX + 8, BY - 66), sd_capsule(BX, BY - 112, BX + 3, BY - 70, 6),
+         solid(leaf), aa=1.6)
 
-    # --- front paws holding a heart on the belly ---
-    for px in (446, 578):
-        draw(cv, (px - 40, 618, px + 40, 706), sd_ellipse(px, 664, 34, 42),
+    # paws hugging the berry from both sides
+    for px in (404, 620):
+        draw(cv, (px - 46, 668, px + 46, 764), sd_ellipse(px, 716, 39, 47),
              solid(OUT), aa=1.6)
-        draw(cv, (px - 34, 622, px + 34, 700), sd_ellipse(px, 664, 28, 36),
+        draw(cv, (px - 39, 672, px + 39, 758), sd_ellipse(px, 716, 32, 41),
              solid(FUR), aa=1.6)
-    draw(cv, (512 - 66, 596, 512 + 66, 716), sd_heart(512, 648, 62),
-         solid((214, 84, 110)), aa=1.8)
-    draw(cv, (512 - 60, 602, 512 + 60, 710), sd_heart(512, 650, 55),
-         solid((255, 92, 128)), aa=1.8)
-    draw(cv, (512 - 60, 602, 512 + 60, 710), sd_heart(512, 650, 55),
-         lambda x, y: (255, 150, 175, clamp((512 - 18 - x) / 130 + (650 - 26 - y) / 200, 0, 0.5)),
-         aa=2.0)  # soft top-left sheen
 
     # --- PNG encode (deterministic) ---
     raw = bytearray()
@@ -334,9 +303,8 @@ def main():
 if __name__ == "__main__":
     main()
 
-# --- make.fun entry notes (cutest-picture-01) -----------------------------
+# --- make.fun entry notes (cutest-picture-01, v2) -------------------------
 # Entrant: @urelkdubdqwr. Deterministic generative art: pure stdlib SDF
-# rasterizer, fixed seedless math only, so every run writes the identical
-# PNG bytes to /output/entry.png.
-# Cuteness levers, in order: eye size and gloss, cheek blush, the heart
-# held in both paws, toe beans, and a cream-tipped curled tail.
+# rasterizer, fixed math only, identical PNG bytes on every run.
+# Duel design: chibi proportions first (head ~60% of frame), one red
+# prop at chest height as the only saturated object in the scene.

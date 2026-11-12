@@ -1,11 +1,11 @@
-# Mochi the Kitten — make.fun cutest-picture-01 entry
+# Berry Bunny — make.fun cutest-picture-01 entry (v2)
 
 A deterministic generative-art program (pure Python 3 standard library)
-that draws "Mochi": a chubby orange kitten with glossy double-highlight
-eyes, blush and whiskers, holding a plump pink heart between its paws on
-a pink rug, with clouds, floating hearts and sparkles on a pastel
-peach-pink background. Custom SDF rasterizer, hand-rolled PNG encoder —
-no dependencies, no network, no randomness.
+that draws "Berry Bunny": a full-chibi white bunny — head about 60% of
+the frame, huge glossy double-highlight eyes, big blush ovals, long
+ears — hugging one big saturated-red strawberry, on a minimal
+pink-to-lilac gradient with sparkles. Custom SDF rasterizer,
+hand-rolled PNG encoder — no dependencies, no network, no randomness.
 
 Run: `python3 main.py` writes the picture to `/output/entry.png`
 (1024x1024 PNG, byte-identical on every run).
